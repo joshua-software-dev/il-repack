@@ -317,6 +317,14 @@ namespace ILRepacking
             _lineIndexer = new IKVMLineIndexer(this, Options.LineIndexation);
             var signingStep = new SigningStep(this, Options);
             var isUnixEnvironment = Environment.OSVersion.Platform == PlatformID.MacOSX || Environment.OSVersion.Platform == PlatformID.Unix;
+            Mono.Unix.Native.Stat? statNullable = null;
+            if (isUnixEnvironment)
+            {
+                var primaryFullPath = Path.GetFullPath(PrimaryAssemblyFile);
+                Logger.Info("Copying permissions from " + primaryFullPath);
+                Mono.Unix.Native.Syscall.stat(primaryFullPath, out var stat);
+                statNullable = stat;
+            }
 
             using (var sourceServerDataStep = GetSourceServerDataStep(isUnixEnvironment))
             {
@@ -359,10 +367,12 @@ namespace ILRepacking
                 // the primary assembly
                 if (isUnixEnvironment)
                 {
-                    Stat stat;
-                    Logger.Info("Copying permissions from " + PrimaryAssemblyFile);
-                    Syscall.stat(PrimaryAssemblyFile, out stat);
-                    Syscall.chmod(Options.OutputFile, stat.st_mode);
+                    if (statNullable != null)
+                    {
+                        var outputFullPath = Path.GetFullPath(Options.OutputFile);
+                        Logger.Info("Applying copied permissions to " + outputFullPath);
+                        Mono.Unix.Native.Syscall.chmod(outputFullPath, statNullable.Value.st_mode);
+                    }
                 }
                 if (hadStrongName && !TargetAssemblyDefinition.Name.HasPublicKey)
                     Options.StrongNameLost = true;
